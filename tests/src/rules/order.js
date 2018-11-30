@@ -410,6 +410,18 @@ ruleTester.run('order', rule, {
         },
       ],
     }),
+    // Flow imports
+    test({
+      code: `
+        import foo from 'foo';
+        import type { bar } from 'bar';
+      `,
+      parser: 'babel-eslint',
+      options: [{groups: [
+        'external',
+        'flow',
+      ]}],
+    }),
   ],
   invalid: [
     // builtin before external module (require)
@@ -1279,6 +1291,24 @@ ruleTester.run('order', rule, {
         ruleId: 'order',
         message: '`fs` import should occur before import of `async`',
       }],
+    }),
+    // Flow imports
+    test({
+      code: `
+        import type { bar } from 'bar';
+        import foo from 'foo';
+      `,
+      parser: 'babel-eslint',
+      options: [{groups: [
+        'external',
+        'flow',
+      ]}],
+      errors: [
+        {
+          line: 3,
+          message: '`foo` import should occur before import of `bar`',
+        },
+      ],
     }),
   ],
 })
