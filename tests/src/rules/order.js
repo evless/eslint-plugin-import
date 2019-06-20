@@ -1422,7 +1422,6 @@ ruleTester.run('order', rule, {
           },
         ],
       }),
-    ],
     // fix incorrect order with @typescript-eslint/parser
     testVersion('>5.0.0', {
       code: `

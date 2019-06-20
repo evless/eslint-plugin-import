@@ -15,7 +15,9 @@
     "memo-parser"
   ],
   "scripts": {
-    "watch": "cross-env NODE_PATH=./src mocha --watch --compilers js:babel-register --recursive tests/src/rules/no-imports.js",
+    "build": "babel --quiet --out-dir lib src",
+    "prebuild": "rimraf lib",
+    "watch": "npm run mocha -- --watch tests/src",
     "pretest": "linklocal",
     "posttest": "eslint ./src",
     "mocha": "cross-env BABEL_ENV=test NODE_PATH=./src nyc -s mocha -R dot --recursive -t 5s",

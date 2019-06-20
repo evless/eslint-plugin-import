@@ -77,5 +77,7 @@ ruleTester.run('no-commonjs', require('rules/no-commonjs'), {
       options: ['allow-primitive-modules'],
       errors: [ { message: EXPORT_MESSAGE }],
     },
+
+    { code: 'var obj = { ru: require("./ru") }', errors: [ { message: IMPORT_MESSAGE }] },
   ],
 })
