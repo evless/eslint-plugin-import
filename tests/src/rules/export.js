@@ -1,6 +1,8 @@
 import { test, SYNTAX_CASES } from '../utils'
 
 import { RuleTester } from 'eslint'
+import eslintPkg from 'eslint/package.json'
+import semver from 'semver'
 
 var ruleTester = new RuleTester()
   , rule = require('rules/export')
@@ -17,8 +19,8 @@ ruleTester.run('export', rule, {
     test({ code: 'export var [ foo, bar ] = array;' }),
     test({ code: 'export var { foo, bar } = object;' }),
     test({ code: 'export var [ foo, bar ] = array;' }),
-    test({ code: 'export { foo, foo as bar }' }),
-    test({ code: 'export { bar }; export * from "./export-all"' }),
+    test({ code: 'let foo; export { foo, foo as bar }' }),
+    test({ code: 'let bar; export { bar }; export * from "./export-all"' }),
     test({ code: 'export * from "./export-all"' }),
     test({ code: 'export * from "./does-not-exist"' }),
 
@@ -62,7 +64,7 @@ ruleTester.run('export', rule, {
     //   errors: ['Parsing error: Duplicate export \'foo\''],
     // }),
     test({
-      code: 'export { foo }; export * from "./export-all"',
+      code: 'let foo; export { foo }; export * from "./export-all"',
       errors: ['Multiple exports of name \'foo\'.',
                'Multiple exports of name \'foo\'.'],
     }),
@@ -105,4 +107,174 @@ ruleTester.run('export', rule, {
       errors: [`No named exports found in module './default-export'.`],
     }),
   ],
+})
+
+
+context('Typescript', function () {
+  // Typescript
+  const parsers = ['typescript-eslint-parser']
+
+  if (semver.satisfies(eslintPkg.version, '>5.0.0')) {
+    parsers.push('@typescript-eslint/parser')
+  }
+
+  parsers.forEach((parser) => {
+    const parserConfig = {
+      parser: parser,
+      settings: {
+        'import/parsers': { [parser]: ['.ts'] },
+        'import/resolver': { 'eslint-import-resolver-typescript': true },
+      },
+    }
+
+    ruleTester.run('export', rule, {
+      valid: [
+        // type/value name clash
+        test(Object.assign({
+          code: `
+            export const Foo = 1;
+            export type Foo = number;
+          `,
+        }, parserConfig)),
+        test(Object.assign({
+          code: `
+            export const Foo = 1;
+            export interface Foo {}
+          `,
+        }, parserConfig)),
+
+        // namespace
+        test(Object.assign({
+          code: `
+            export const Bar = 1;
+            export namespace Foo {
+              export const Bar = 1;
+            }
+          `,
+        }, parserConfig)),
+        test(Object.assign({
+          code: `
+            export type Bar = string;
+            export namespace Foo {
+              export type Bar = string;
+            }
+          `,
+        }, parserConfig)),
+        test(Object.assign({
+          code: `
+            export const Bar = 1;
+            export type Bar = string;
+            export namespace Foo {
+              export const Bar = 1;
+              export type Bar = string;
+            }
+          `,
+        }, parserConfig)),
+        test(Object.assign({
+          code: `
+            export namespace Foo {
+              export const Foo = 1;
+              export namespace Bar {
+                export const Foo = 2;
+              }
+              export namespace Baz {
+                export const Foo = 3;
+              }
+            }
+          `,
+        }, parserConfig)),
+      ],
+      invalid: [
+        // type/value name clash
+        test(Object.assign({
+          code: `
+            export type Foo = string;
+            export type Foo = number;
+          `,
+          errors: [
+            {
+              message: `Multiple exports of name 'Foo'.`,
+              line: 2,
+            },
+            {
+              message: `Multiple exports of name 'Foo'.`,
+              line: 3,
+            },
+          ],
+        }, parserConfig)),
+
+        // namespace
+        test(Object.assign({
+          code: `
+            export const a = 1
+            export namespace Foo {
+              export const a = 2;
+              export const a = 3;
+            }
+          `,
+          errors: [
+            {
+              message: `Multiple exports of name 'a'.`,
+              line: 4,
+            },
+            {
+              message: `Multiple exports of name 'a'.`,
+              line: 5,
+            },
+          ],
+        }, parserConfig)),
+        test(Object.assign({
+          code: `
+            declare module 'foo' {
+              const Foo = 1;
+              export default Foo;
+              export default Foo;
+            }
+          `,
+          errors: [
+            {
+              message: 'Multiple default exports.',
+              line: 4,
+            },
+            {
+              message: 'Multiple default exports.',
+              line: 5,
+            },
+          ],
+        }, parserConfig)),
+        test(Object.assign({
+          code: `
+            export namespace Foo {
+              export namespace Bar {
+                export const Foo = 1;
+                export const Foo = 2;
+              }
+              export namespace Baz {
+                export const Bar = 3;
+                export const Bar = 4;
+              }
+            }
+          `,
+          errors: [
+            {
+              message: `Multiple exports of name 'Foo'.`,
+              line: 4,
+            },
+            {
+              message: `Multiple exports of name 'Foo'.`,
+              line: 5,
+            },
+            {
+              message: `Multiple exports of name 'Bar'.`,
+              line: 8,
+            },
+            {
+              message: `Multiple exports of name 'Bar'.`,
+              line: 9,
+            },
+          ],
+        }, parserConfig)),
+      ],
+    })
+  })
 })

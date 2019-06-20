@@ -41,6 +41,7 @@ const schemaObject = {
 
 module.exports = {
   meta: {
+    type: 'suggestion',
     docs: {
       url: docsUrl('no-commonjs'),
     },
@@ -90,6 +91,7 @@ module.exports = {
         if (
           call.parent.type !== 'ExpressionStatement'
           && call.parent.type !== 'VariableDeclarator'
+          && call.parent.type !== 'AssignmentExpression'
         ) return
 
         if (call.callee.type !== 'Identifier') return

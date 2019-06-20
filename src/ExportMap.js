@@ -4,6 +4,8 @@ import doctrine from 'doctrine'
 
 import debug from 'debug'
 
+import { SourceCode } from 'eslint'
+
 import parse from 'eslint-module-utils/parse'
 import resolve from 'eslint-module-utils/resolve'
 import isIgnored, { hasValidExtension } from 'eslint-module-utils/ignore'
@@ -190,25 +192,36 @@ export default class ExportMap {
 
 /**
  * parse docs from the first node that has leading comments
- * @param  {...[type]} nodes [description]
- * @return {{doc: object}}
  */
-function captureDoc(docStyleParsers) {
+function captureDoc(source, docStyleParsers, ...nodes) {
   const metadata = {}
-       , nodes = Array.prototype.slice.call(arguments, 1)
 
   // 'some' short-circuits on first 'true'
   nodes.some(n => {
-    if (!n.leadingComments) return false
+    try {
 
-    for (let name in docStyleParsers) {
-      const doc = docStyleParsers[name](n.leadingComments)
-      if (doc) {
-        metadata.doc = doc
+      let leadingComments
+
+      // n.leadingComments is legacy `attachComments` behavior
+      if ('leadingComments' in n) {
+        leadingComments = n.leadingComments
+      } else if (n.range) {
+        leadingComments = source.getCommentsBefore(n)
       }
-    }
 
-    return true
+      if (!leadingComments || leadingComments.length === 0) return false
+
+      for (let name in docStyleParsers) {
+        const doc = docStyleParsers[name](leadingComments)
+        if (doc) {
+          metadata.doc = doc
+        }
+      }
+
+      return true
+    } catch (err) {
+      return false
+    }
   })
 
   return metadata
@@ -230,7 +243,7 @@ function captureJsDoc(comments) {
   // capture XSDoc
   comments.forEach(comment => {
     // skip non-block comments
-    if (comment.value.slice(0, 4) !== '*\n *') return
+    if (comment.type !== 'Block') return
     try {
       doc = doctrine.parse(comment.value, { unwrap: true })
     } catch (err) {
@@ -384,28 +397,42 @@ ExportMap.parse = function (path, content, context) {
 
   function captureDependency(declaration) {
     if (declaration.source == null) return null
+    const importedSpecifiers = new Set()
+    const supportedTypes = new Set(['ImportDefaultSpecifier', 'ImportNamespaceSpecifier'])
+    if (declaration.specifiers) {
+      declaration.specifiers.forEach(specifier => {
+        if (supportedTypes.has(specifier.type)) {
+          importedSpecifiers.add(specifier.type)
+        }
+        if (specifier.type === 'ImportSpecifier') {
+          importedSpecifiers.add(specifier.imported.name)
+        }
+      })
+    }
 
     const p = remotePath(declaration.source.value)
     if (p == null) return null
     const existing = m.imports.get(p)
     if (existing != null) return existing.getter
 
-    const getter = () => ExportMap.for(childContext(p, context))
+    const getter = thunkFor(p, context)
     m.imports.set(p, {
       getter,
       source: {  // capturing actual node reference holds full AST in memory!
         value: declaration.source.value,
         loc: declaration.source.loc,
       },
+      importedSpecifiers,
     })
     return getter
   }
 
+  const source = makeSourceCode(content, ast)
 
   ast.body.forEach(function (n) {
 
     if (n.type === 'ExportDefaultDeclaration') {
-      const exportMeta = captureDoc(docStyleParsers, n)
+      const exportMeta = captureDoc(source, docStyleParsers, n)
       if (n.declaration.type === 'Identifier') {
         addNamespace(exportMeta, n.declaration)
       }
@@ -437,16 +464,19 @@ ExportMap.parse = function (path, content, context) {
           case 'ClassDeclaration':
           case 'TypeAlias': // flowtype with babel-eslint parser
           case 'InterfaceDeclaration':
+          case 'DeclareFunction':
+          case 'TSDeclareFunction':
           case 'TSEnumDeclaration':
+          case 'TSTypeAliasDeclaration':
           case 'TSInterfaceDeclaration':
           case 'TSAbstractClassDeclaration':
           case 'TSModuleDeclaration':
-            m.namespace.set(n.declaration.id.name, captureDoc(docStyleParsers, n))
+            m.namespace.set(n.declaration.id.name, captureDoc(source, docStyleParsers, n))
             break
           case 'VariableDeclaration':
             n.declaration.declarations.forEach((d) =>
               recursivePatternCapture(d.id,
-                id => m.namespace.set(id.name, captureDoc(docStyleParsers, d, n))))
+                id => m.namespace.set(id.name, captureDoc(source, docStyleParsers, d, n))))
             break
         }
       }
@@ -481,9 +511,46 @@ ExportMap.parse = function (path, content, context) {
         m.reexports.set(s.exported.name, { local, getImport: () => resolveImport(nsource) })
       })
     }
+
+    // This doesn't declare anything, but changes what's being exported.
+    if (n.type === 'TSExportAssignment') {
+      const moduleDecl = ast.body.find((bodyNode) =>
+        bodyNode.type === 'TSModuleDeclaration' && bodyNode.id.name === n.expression.name
+      )
+      if (moduleDecl && moduleDecl.body && moduleDecl.body.body) {
+        moduleDecl.body.body.forEach((moduleBlockNode) => {
+          // Export-assignment exports all members in the namespace, explicitly exported or not.
+          const exportedDecl = moduleBlockNode.type === 'ExportNamedDeclaration' ?
+            moduleBlockNode.declaration :
+            moduleBlockNode
+
+          if (exportedDecl.type === 'VariableDeclaration') {
+            exportedDecl.declarations.forEach((decl) =>
+              recursivePatternCapture(decl.id,(id) => m.namespace.set(
+                id.name,
+                captureDoc(source, docStyleParsers, decl, exportedDecl, moduleBlockNode))
+              )
+            )
+          } else {
+            m.namespace.set(
+              exportedDecl.id.name,
+              captureDoc(source, docStyleParsers, moduleBlockNode))
+          }
+        })
+      }
+    }
   })
 
   return m
+}
+
+/**
+ * The creation of this closure is isolated from other scopes
+ * to avoid over-retention of unrelated variables, which has
+ * caused memory leaks. See #1266.
+ */
+function thunkFor(p, context) {
+  return () => ExportMap.for(childContext(p, context))
 }
 
 
@@ -529,5 +596,19 @@ function childContext(path, context) {
     parserOptions,
     parserPath,
     path,
+  }
+}
+
+
+/**
+ * sometimes legacy support isn't _that_ hard... right?
+ */
+function makeSourceCode(text, ast) {
+  if (SourceCode.length > 1) {
+    // ESLint 3
+    return new SourceCode(text, ast)
+  } else {
+    // ESLint 4, 5
+    return new SourceCode({ text, ast })
   }
 }

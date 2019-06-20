@@ -7,6 +7,7 @@ import { testContext } from '../utils'
 
 describe('importType(name)', function () {
   const context = testContext()
+  const pathToTestFiles = path.join(__dirname, '..', '..', 'files')
 
   it("should return 'absolute' for paths starting with a /", function() {
     expect(importType('/', context)).to.equal('absolute')
@@ -36,9 +37,40 @@ describe('importType(name)', function () {
     expect(importType('@some-thing/something/some-directory/someModule.js', context)).to.equal('external')
   })
 
+  it("should return 'external' for external modules that redirect to its parent module using package.json", function() {
+    expect(importType('eslint-import-test-order-redirect/module', context)).to.equal('external')
+    expect(importType('@eslint/import-test-order-redirect-scoped/module', context)).to.equal('external')
+  })
+
   it("should return 'internal' for non-builtins resolved outside of node_modules", function () {
-    const pathContext = testContext({ "import/resolver": { node: { paths: [ path.join(__dirname, '..', '..', 'files') ] } } })
+    const pathContext = testContext({ "import/resolver": { node: { paths: [pathToTestFiles] } } })
     expect(importType('importType', pathContext)).to.equal('internal')
+  })
+
+  it.skip("should return 'internal' for scoped packages resolved outside of node_modules", function () {
+    const pathContext = testContext({ "import/resolver": { node: { paths: [pathToTestFiles] } } })
+    expect(importType('@importType/index', pathContext)).to.equal('internal')
+  })
+    
+  it("should return 'internal' for internal modules that are referenced by aliases", function () {
+    const pathContext = testContext({ 'import/resolver': { node: { paths: [pathToTestFiles] } } })
+    expect(importType('@my-alias/fn', pathContext)).to.equal('internal')
+  })
+
+  it("should return 'internal' for aliased internal modules that look like core modules (node resolver)", function () {
+    const pathContext = testContext({ 'import/resolver': { node: { paths: [pathToTestFiles] } } })
+    expect(importType('constants/index', pathContext)).to.equal('internal')
+    expect(importType('constants/', pathContext)).to.equal('internal')
+    // resolves exact core modules over internal modules
+    expect(importType('constants', pathContext)).to.equal('builtin')
+  })
+
+  it("should return 'internal' for aliased internal modules that look like core modules (webpack resolver)", function () {
+    const webpackConfig = { resolve: { modules: [pathToTestFiles, 'node_modules'] } }
+    const pathContext = testContext({ 'import/resolver': { webpack: { config: webpackConfig } } })
+    expect(importType('constants/index', pathContext)).to.equal('internal')
+    expect(importType('constants/', pathContext)).to.equal('internal')
+    expect(importType('constants', pathContext)).to.equal('internal')
   })
 
   it("should return 'parent' for internal modules that go through the parent", function() {
@@ -90,16 +122,16 @@ describe('importType(name)', function () {
   })
 
   it("should return 'external' for module from 'node_modules' with default config", function() {
-    expect(importType('builtin-modules', context)).to.equal('external')
+    expect(importType('resolve', context)).to.equal('external')
   })
 
   it("should return 'internal' for module from 'node_modules' if 'node_modules' missed in 'external-module-folders'", function() {
     const foldersContext = testContext({ 'import/external-module-folders': [] })
-    expect(importType('builtin-modules', foldersContext)).to.equal('internal')
+    expect(importType('resolve', foldersContext)).to.equal('internal')
   })
 
   it("should return 'external' for module from 'node_modules' if 'node_modules' contained in 'external-module-folders'", function() {
     const foldersContext = testContext({ 'import/external-module-folders': ['node_modules'] })
-    expect(importType('builtin-modules', foldersContext)).to.equal('external')
+    expect(importType('resolve', foldersContext)).to.equal('external')
   })
 })

@@ -1,4 +1,6 @@
 import { expect } from  'chai'
+import semver from 'semver'
+import eslintPkg from 'eslint/package.json'
 import ExportMap from '../../../src/ExportMap'
 
 import * as fs from 'fs'
@@ -94,12 +96,12 @@ describe('ExportMap', function () {
 
   context('deprecation metadata', function () {
 
-    function jsdocTests(parseContext) {
+    function jsdocTests(parseContext, lineEnding) {
       context('deprecated imports', function () {
         let imports
         before('parse file', function () {
           const path = getFilename('deprecated.js')
-              , contents = fs.readFileSync(path, { encoding: 'utf8' })
+              , contents = fs.readFileSync(path, { encoding: 'utf8' }).replace(/[\r]\n/g, lineEnding)
           imports = ExportMap.parse(path, contents, parseContext)
 
           // sanity checks
@@ -110,26 +112,26 @@ describe('ExportMap', function () {
           expect(imports.has('fn')).to.be.true
 
           expect(imports.get('fn'))
-            .to.have.deep.property('doc.tags[0].title', 'deprecated')
+            .to.have.nested.property('doc.tags[0].title', 'deprecated')
           expect(imports.get('fn'))
-            .to.have.deep.property('doc.tags[0].description', "please use 'x' instead.")
+            .to.have.nested.property('doc.tags[0].description', 'please use \'x\' instead.')
         })
 
         it('works with default imports.', function () {
           expect(imports.has('default')).to.be.true
           const importMeta = imports.get('default')
 
-          expect(importMeta).to.have.deep.property('doc.tags[0].title', 'deprecated')
-          expect(importMeta).to.have.deep.property('doc.tags[0].description', 'this is awful, use NotAsBadClass.')
+          expect(importMeta).to.have.nested.property('doc.tags[0].title', 'deprecated')
+          expect(importMeta).to.have.nested.property('doc.tags[0].description', 'this is awful, use NotAsBadClass.')
         })
 
         it('works with variables.', function () {
           expect(imports.has('MY_TERRIBLE_ACTION')).to.be.true
           const importMeta = imports.get('MY_TERRIBLE_ACTION')
 
-          expect(importMeta).to.have.deep.property(
+          expect(importMeta).to.have.nested.property(
             'doc.tags[0].title', 'deprecated')
-          expect(importMeta).to.have.deep.property(
+          expect(importMeta).to.have.nested.property(
             'doc.tags[0].description', 'please stop sending/handling this action type.')
         })
 
@@ -138,27 +140,27 @@ describe('ExportMap', function () {
             expect(imports.has('CHAIN_A')).to.be.true
             const importMeta = imports.get('CHAIN_A')
 
-            expect(importMeta).to.have.deep.property(
+            expect(importMeta).to.have.nested.property(
               'doc.tags[0].title', 'deprecated')
-            expect(importMeta).to.have.deep.property(
+            expect(importMeta).to.have.nested.property(
               'doc.tags[0].description', 'this chain is awful')
           })
           it('works for the second one', function () {
             expect(imports.has('CHAIN_B')).to.be.true
             const importMeta = imports.get('CHAIN_B')
 
-            expect(importMeta).to.have.deep.property(
+            expect(importMeta).to.have.nested.property(
               'doc.tags[0].title', 'deprecated')
-            expect(importMeta).to.have.deep.property(
+            expect(importMeta).to.have.nested.property(
               'doc.tags[0].description', 'so awful')
           })
           it('works for the third one, etc.', function () {
             expect(imports.has('CHAIN_C')).to.be.true
             const importMeta = imports.get('CHAIN_C')
 
-            expect(importMeta).to.have.deep.property(
+            expect(importMeta).to.have.nested.property(
               'doc.tags[0].title', 'deprecated')
-            expect(importMeta).to.have.deep.property(
+            expect(importMeta).to.have.nested.property(
               'doc.tags[0].description', 'still terrible')
           })
         })
@@ -189,7 +191,15 @@ describe('ExportMap', function () {
           attachComment: true,
         },
         settings: {},
-      })
+      }, '\n')
+      jsdocTests({
+        parserPath: 'espree',
+        parserOptions: {
+          sourceType: 'module',
+          attachComment: true,
+        },
+        settings: {},
+      }, '\r\n')
     })
 
     context('babel-eslint', function () {
@@ -200,7 +210,15 @@ describe('ExportMap', function () {
           attachComment: true,
         },
         settings: {},
-      })
+      }, '\n')
+      jsdocTests({
+        parserPath: 'babel-eslint',
+        parserOptions: {
+          sourceType: 'module',
+          attachComment: true,
+        },
+        settings: {},
+      }, '\r\n')
     })
   })
 
@@ -317,7 +335,12 @@ describe('ExportMap', function () {
       ['array form', { 'typescript-eslint-parser': ['.ts', '.tsx'] }],
     ]
 
+    if (semver.satisfies(eslintPkg.version, '>5.0.0')) {
+      configs.push(['array form', { '@typescript-eslint/parser': ['.ts', '.tsx'] }])
+    }
+
     configs.forEach(([description, parserConfig]) => {
+
       describe(description, function () {
         const context = Object.assign({}, fakeContext,
           { settings: {

@@ -1,4 +1,4 @@
-import { test } from '../utils'
+import { test, testVersion } from '../utils'
 
 import { RuleTester } from 'eslint'
 
@@ -167,6 +167,46 @@ ruleTester.run('order', rule, {
         var relParent3 = require('../');
         var index = require('./');
       `,
+    }),
+    // Addijg unknown import types (e.g. using an resolver alias via babel) to the groups.
+    test({
+      code: `
+        import fs from 'fs';
+        import { Input } from '-/components/Input';
+        import { Button } from '-/components/Button';
+        import { add } from './helper';`,
+      options: [{
+        groups: ['builtin', 'external', 'unknown', 'parent', 'sibling', 'index'],
+      }],
+    }),
+    // Using unknown import types (e.g. using an resolver alias via babel) with
+    // an alternative custom group list.
+    test({
+      code: `
+        import { Input } from '-/components/Input';
+        import { Button } from '-/components/Button';
+        import fs from 'fs';
+        import { add } from './helper';`,
+      options: [{
+        groups: [ 'unknown', 'builtin', 'external', 'parent', 'sibling', 'index' ],
+      }],
+    }),
+    // Using unknown import types (e.g. using an resolver alias via babel)
+    // Option: newlines-between: 'always'
+    test({
+      code: `
+        import fs from 'fs';
+
+        import { Input } from '-/components/Input';
+        import { Button } from '-/components/Button';
+
+        import { add } from './helper';`,
+      options: [
+        {
+          'newlines-between': 'always',
+          groups: ['builtin', 'external', 'unknown', 'parent', 'sibling', 'index'],
+        },
+      ],
     }),
     // Option: newlines-between: 'always'
     test({
@@ -534,6 +574,21 @@ ruleTester.run('order', rule, {
         message: '`fs` import should occur before import of `async`',
       }],
     }),
+    // fix destructured commonjs import
+    test({
+      code: `
+        var {b} = require('async');
+        var {a} = require('fs');
+      `,
+      output: `
+        var {a} = require('fs');
+        var {b} = require('async');
+      `,
+      errors: [{
+        ruleId: 'order',
+        message: '`fs` import should occur before import of `async`',
+      }],
+    }),
     // fix order of multile import
     test({
       code: `
@@ -885,6 +940,63 @@ ruleTester.run('order', rule, {
         ruleId: 'order',
         message: '`fs` import should occur after import of `../foo/bar`',
       }],
+    }),
+    // Default order using import with custom import alias
+    test({
+      code: `
+        import { Button } from '-/components/Button';
+        import { add } from './helper';
+        import fs from 'fs';
+      `,
+      output: `
+        import fs from 'fs';
+        import { Button } from '-/components/Button';
+        import { add } from './helper';
+      `,
+      options: [
+        {
+          groups: ['builtin', 'external', 'unknown', 'parent', 'sibling', 'index'],
+        },
+      ],
+      errors: [
+        {
+          line: 4,
+          message: '`fs` import should occur before import of `-/components/Button`',
+        },
+      ],
+    }),
+    // Default order using import with custom import alias
+    test({
+      code: `
+        import fs from 'fs';
+        import { Button } from '-/components/Button';
+        import { LinkButton } from '-/components/Link';
+        import { add } from './helper';
+      `,
+      output: `
+        import fs from 'fs';
+
+        import { Button } from '-/components/Button';
+        import { LinkButton } from '-/components/Link';
+
+        import { add } from './helper';
+      `,
+      options: [
+        {
+          groups: ['builtin', 'external', 'unknown', 'parent', 'sibling', 'index'],
+          'newlines-between': 'always',
+        },
+      ],
+      errors: [
+        {
+          line: 2,
+          message: 'There should be at least one empty line between import groups',
+        },
+        {
+          line: 4,
+          message: 'There should be at least one empty line between import groups',
+        },
+      ],
     }),
     // Option newlines-between: 'never' - should report unnecessary line between groups
     test({
@@ -1294,21 +1406,38 @@ ruleTester.run('order', rule, {
     }),
     // Flow imports
     test({
+        code: `
+          import type { bar } from 'bar';
+          import foo from 'foo';
+        `,
+        parser: 'babel-eslint',
+        options: [{groups: [
+          'external',
+          'flow',
+        ]}],
+        errors: [
+          {
+            line: 3,
+            message: '`foo` import should occur before import of `bar`',
+          },
+        ],
+      }),
+    ],
+    // fix incorrect order with @typescript-eslint/parser
+    testVersion('>5.0.0', {
       code: `
-        import type { bar } from 'bar';
-        import foo from 'foo';
+        var async = require('async');
+        var fs = require('fs');
       `,
-      parser: 'babel-eslint',
-      options: [{groups: [
-        'external',
-        'flow',
-      ]}],
-      errors: [
-        {
-          line: 3,
-          message: '`foo` import should occur before import of `bar`',
-        },
-      ],
+      output: `
+        var fs = require('fs');
+        var async = require('async');
+      `,
+      parser: '@typescript-eslint/parser',
+      errors: [{
+        ruleId: 'order',
+        message: '`fs` import should occur before import of `async`',
+      }],
     }),
-  ],
+  ].filter((t) => !!t),
 })

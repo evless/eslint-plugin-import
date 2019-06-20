@@ -33,7 +33,9 @@ export function isPrivate(name, settings, path, groups = []) {
   return !!regexp && regexp.test(name)
 }
 
-export function isBuiltIn(name, settings) {
+// path is defined only when a resolver resolves to a non-standard path
+export function isBuiltIn(name, settings, path) {
+  if (path) return false
   const base = baseModule(name)
   const extras = (settings && settings['import/core-modules']) || []
   return coreModules[base] || extras.indexOf(base) > -1
@@ -41,7 +43,11 @@ export function isBuiltIn(name, settings) {
 
 function isExternalPath(path, name, settings) {
   const folders = (settings && settings['import/external-module-folders']) || ['node_modules']
-  return !path || folders.some(folder => -1 < path.indexOf(join(folder, name)))
+
+  // extract the part before the first / (redux-saga/effects => redux-saga)
+  const packageName = name.match(/([^/]+)/)[0]
+
+  return !path || folders.some(folder => -1 < path.indexOf(join(folder, packageName)))
 }
 
 const externalModuleRegExp = /^\w/
@@ -65,7 +71,8 @@ export function isScopedMain(name) {
 }
 
 function isInternalModule(name, settings, path) {
-  return externalModuleRegExp.test(name) && !isExternalPath(path, name, settings)
+  const matchesScopedOrExternalRegExp = scopedRegExp.test(name) || externalModuleRegExp.test(name)
+  return (matchesScopedOrExternalRegExp && !isExternalPath(path, name, settings))
 }
 
 function isRelativeToParent(name) {
@@ -85,9 +92,9 @@ const typeTest = cond([
   [isAbsolute, constant('absolute')],
   [isPrivate, constant('private')],
   [isBuiltIn, constant('builtin')],
+  [isInternalModule, constant('internal')],
   [isExternalModule, constant('external')],
   [isScoped, constant('external')],
-  [isInternalModule, constant('internal')],
   [isRelativeToParent, constant('parent')],
   [isIndex, constant('index')],
   [isRelativeToSibling, constant('sibling')],

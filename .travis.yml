@@ -1,5 +1,6 @@
 language: node_js
 node_js:
+  - '12'
   - '10'
   - '8'
   - '6'
@@ -8,6 +9,7 @@ node_js:
 os: linux
 
 env:
+  - ESLINT_VERSION=^6.0.0-alpha
   - ESLINT_VERSION=5
   - ESLINT_VERSION=4
   - ESLINT_VERSION=3
@@ -17,6 +19,8 @@ env:
 matrix:
   include:
   - env: PACKAGE=resolvers/node
+    node_js: 12
+  - env: PACKAGE=resolvers/node
     node_js: 10
   - env: PACKAGE=resolvers/node
     node_js: 8
@@ -25,6 +29,8 @@ matrix:
   - env: PACKAGE=resolvers/node
     node_js: 4
   - env: PACKAGE=resolvers/webpack
+    node_js: 12
+  - env: PACKAGE=resolvers/webpack
     node_js: 10
   - env: PACKAGE=resolvers/webpack
     node_js: 8
@@ -32,6 +38,10 @@ matrix:
     node_js: 6
   - env: PACKAGE=resolvers/webpack
     node_js: 4
+
+  - os: osx
+    env: ESLINT_VERSION=5
+    node_js: 12
   - os: osx
     env: ESLINT_VERSION=5
     node_js: 10
@@ -44,16 +54,28 @@ matrix:
   - os: osx
     env: ESLINT_VERSION=2
     node_js: 4
+
   exclude:
   - node_js: '4'
     env: ESLINT_VERSION=5
+  - node_js: '4'
+    env: ESLINT_VERSION=^6.0.0-alpha
+  - node_js: '6'
+    env: ESLINT_VERSION=^6.0.0-alpha
+
+  fast_finish: true
+  allow_failures:
+  # issues with typescript deps in this version intersection
+  - node_js: '4'
+    env: ESLINT_VERSION=4
+  - env: ESLINT_VERSION=^6.0.0-alpha
 
 before_install:
   - 'nvm install-latest-npm'
   - 'if [ -n "${PACKAGE-}" ]; then cd "${PACKAGE}"; fi'
 install:
   - npm install
-  - npm install --no-save eslint@$ESLINT_VERSION --ignore-scripts || true
+  - 'if [ -n "${ESLINT_VERSION}" ]; then ./tests/dep-time-travel.sh; fi'
 
 script:
   - 'npm test'

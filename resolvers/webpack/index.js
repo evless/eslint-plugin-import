@@ -38,15 +38,12 @@ exports.resolve = function (source, file, settings) {
     source = source.slice(0, finalQuestionMark)
   }
 
-  if (source in coreLibs) {
-    return { found: true, path: coreLibs[source] }
-  }
-
   var webpackConfig
 
   var configPath = get(settings, 'config')
     , configIndex = get(settings, 'config-index')
     , env = get(settings, 'env')
+    , argv = get(settings, 'argv', {})
     , packageDir
 
   log('Config path from settings:', configPath)
@@ -72,7 +69,7 @@ exports.resolve = function (source, file, settings) {
           throw e
         }
       } else {
-        log("No config path found relative to", file, "; using {}")
+        log('No config path found relative to', file, '; using {}')
         webpackConfig = {}
       }
 
@@ -87,13 +84,13 @@ exports.resolve = function (source, file, settings) {
   }
 
   if (typeof webpackConfig === 'function') {
-    webpackConfig = webpackConfig(env, {})
+    webpackConfig = webpackConfig(env, argv)
   }
 
   if (Array.isArray(webpackConfig)) {
     webpackConfig = webpackConfig.map(cfg => {
       if (typeof cfg === 'function') {
-        return cfg(env, {})
+        return cfg(env, argv)
       }
 
       return cfg
@@ -122,6 +119,10 @@ exports.resolve = function (source, file, settings) {
   try {
     return { found: true, path: resolveSync(path.dirname(file), source) }
   } catch (err) {
+    if (source in coreLibs) {
+      return { found: true, path: coreLibs[source] }
+    }
+
     log('Error during module resolution:', err)
     return { found: false }
   }
@@ -135,7 +136,7 @@ function getResolveSync(configPath, webpackConfig) {
   if (!cached) {
     cached = {
       key: cacheKey,
-      value: createResolveSync(configPath, webpackConfig)
+      value: createResolveSync(configPath, webpackConfig),
     }
     // put in front and pop last item
     if (_cache.unshift(cached) > MAX_CACHE) {

@@ -1,4 +1,6 @@
 import path from 'path'
+import eslintPkg from 'eslint/package.json'
+import semver from 'semver'
 
 // warms up the module cache. this import takes a while (>500ms)
 import 'babel-eslint'
@@ -8,6 +10,10 @@ export function testFilePath(relativePath) {
 }
 
 export const FILENAME = testFilePath('foo.js')
+
+export function testVersion(specifier, t) {
+  return semver.satisfies(eslintPkg.version, specifier) && test(t)
+}
 
 export function test(t) {
   return Object.assign({
@@ -43,8 +49,8 @@ export const SYNTAX_CASES = [
   test({ code: 'const { x, y, ...z } = bar', parser: 'babel-eslint' }),
 
   // all the exports
-  test({ code: 'export { x }' }),
-  test({ code: 'export { x as y }' }),
+  test({ code: 'let x; export { x }' }),
+  test({ code: 'let x; export { x as y }' }),
 
   // not sure about these since they reference a file
   // test({ code: 'export { x } from "./y.js"'}),
