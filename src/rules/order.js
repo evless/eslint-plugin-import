@@ -273,7 +273,6 @@ const types = [
   'private',
   'internal',
   'parent',
-  'unknown',
   'sibling',
   'index',
   'absolute',
